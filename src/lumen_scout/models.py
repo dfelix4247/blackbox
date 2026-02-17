@@ -19,8 +19,14 @@ class Lead(BaseModel):
     phone: Optional[str] = None
     contact_email: Optional[str] = None
     contact_role: Optional[str] = None
+    all_emails: Optional[str] = None
+    primary_contact: Optional[str] = None
+    linkedin_url: Optional[str] = None
     contact_form_url: Optional[str] = None
     contact_page: Optional[str] = None
+    contact_method: Optional[str] = None
+    contact_score: int = 0
+    contact_priority_label: Optional[str] = None
     about_page: Optional[str] = None
     about_page_url: Optional[str] = None
     staff_page_url: Optional[str] = None

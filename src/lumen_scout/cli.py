@@ -68,14 +68,37 @@ def draft(
     llm = LLMService(dry_run=dry_run)
     delivery = ManualDelivery()
 
+    sorted_leads = sorted(leads, key=lambda lead: lead.contact_score, reverse=True)
     count = 0
-    for lead in leads:
+    for lead in sorted_leads:
         if count >= limit:
             break
-        content = llm.email_draft(lead)
-        output_path = Path("outreach_drafts") / f"{lead.lead_id}_email1.md"
-        delivery.deliver(lead, content, output_path)
-        lead.email1_path = str(output_path)
+        method = lead.contact_method or "none"
+        tier = lead.contact_priority_label or "Tier 5"
+        if tier in {"Tier 1", "Tier 3"}:
+            content = llm.email_draft(lead)
+            output_path = Path("outreach_drafts") / f"{lead.lead_id}_email1.md"
+            delivery.deliver(lead, content, output_path)
+            lead.email1_path = str(output_path)
+        elif tier == "Tier 4":
+            content = llm.contact_form_draft(lead)
+            output_path = Path("outreach_drafts") / f"{lead.lead_id}_contact_form.md"
+            delivery.deliver(lead, content, output_path)
+            lead.email1_path = str(output_path)
+        elif tier == "Tier 5" and method == "phone_only":
+            continue
+
+        if tier in {"Tier 1", "Tier 2"} and lead.linkedin_url:
+            linkedin_content = llm.linkedin_draft(lead)
+            linkedin_output_path = Path("outreach_drafts") / f"{lead.lead_id}_linkedin.md"
+            delivery.deliver(lead, linkedin_content, linkedin_output_path)
+
+        if tier in {"Tier 1", "Tier 2"} and lead.contact_email and not lead.email1_path:
+            email_content = llm.email_draft(lead)
+            email_output_path = Path("outreach_drafts") / f"{lead.lead_id}_email1.md"
+            delivery.deliver(lead, email_content, email_output_path)
+            lead.email1_path = str(email_output_path)
+        
         count += 1
 
     save_leads(leads, input)

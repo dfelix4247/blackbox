@@ -71,6 +71,36 @@ class LLMService:
         )
         return self._complete(prompt, fallback)
 
+    def linkedin_draft(self, lead: Lead) -> str:
+        prompt = (
+            "Write a concise LinkedIn outreach message for a private K-12 school decision maker. "
+            "Constraints: 45-70 words, professional tone, one call to action for a 15-minute call.\n"
+            f"School: {lead.school_name}\n"
+            f"Personalization hook: {lead.personalization_hook or ''}"
+        )
+        fallback = (
+            f"Hi, I work with private schools like {lead.school_name} to reduce routine administrative load "
+            "and improve follow-through for staff and families. "
+            "If helpful, I can share one practical example relevant to your school. "
+            "Would you be open to a brief 15-minute conversation?"
+        )
+        return self._complete(prompt, fallback)
+
+    def contact_form_draft(self, lead: Lead) -> str:
+        prompt = (
+            "Write a contact-form-safe outreach message for a private K-12 school. "
+            "Constraints: plain text, 50-80 words, no markdown, one CTA for a 15-minute call.\n"
+            f"School: {lead.school_name}\n"
+            f"Personalization hook: {lead.personalization_hook or ''}"
+        )
+        fallback = (
+            f"Hello {lead.school_name} team, I am reaching out because we help school leaders reduce routine "
+            "administrative workload and improve day-to-day follow-through. "
+            "If useful, I can share one simple example tailored to your school context. "
+            "Would a 15-minute call next week be possible?"
+        )
+        return self._complete(prompt, fallback)
+
     def call_brief(self, lead: Lead) -> str:
         prompt = (
             "Create a concise call brief in markdown for preparing a first conversation with a private K-12 school administrator. "

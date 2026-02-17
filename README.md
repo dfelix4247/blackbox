@@ -113,6 +113,14 @@ Columns:
 - `domain`
 - `provider`
 - `contact_email`
+- `contact_role`
+- `all_emails`
+- `primary_contact`
+- `linkedin_url`
+- `contact_method`
+- `contact_score`
+- `contact_priority_label`
+- `contact_form_url`
 - `contact_page`
 - `about_page`
 - `personalization_hook`
