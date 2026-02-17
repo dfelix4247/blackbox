@@ -14,9 +14,16 @@ class Lead(BaseModel):
     website: Optional[str] = None
     domain: Optional[str] = None
     provider: Optional[str] = None
+    source_query: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
     contact_email: Optional[str] = None
+    contact_role: Optional[str] = None
+    contact_form_url: Optional[str] = None
     contact_page: Optional[str] = None
     about_page: Optional[str] = None
+    about_page_url: Optional[str] = None
+    staff_page_url: Optional[str] = None
     personalization_hook: Optional[str] = None
     enriched_at: Optional[str] = None
     email1_path: Optional[str] = None

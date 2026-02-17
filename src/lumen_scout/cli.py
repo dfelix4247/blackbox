@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -23,11 +24,17 @@ def discover(
     provider: str = typer.Option("serpapi", "--provider"),
 ) -> None:
     """Discover private K-12 schools and append deduped leads to CSV."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     existing = load_leads()
     svc = get_provider(provider)
     found = svc.search(city=city, max_results=max)
     merged = dedupe_leads(existing, found)
     save_leads(merged)
+    for lead in found:
+        typer.echo(
+            f"[DISCOVER] accepted lead='{lead.school_name}' query='{lead.source_query}' "
+            f"website='{lead.website or 'n/a'}'"
+            )
     typer.echo(f"Discovered {len(found)} results; saved {len(merged) - len(existing)} new leads to data/leads.csv")
 
 
