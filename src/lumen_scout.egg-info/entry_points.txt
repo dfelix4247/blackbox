@@ -1,0 +1,2 @@
+[console_scripts]
+lumen-scout = lumen_scout.cli:app
