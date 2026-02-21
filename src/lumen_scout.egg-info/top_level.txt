@@ -1,1 +1,1 @@
-lumen-scout
+lumen_scout

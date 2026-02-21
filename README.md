@@ -1,16 +1,16 @@
 # lumen-scout
 
-`lumen-scout` is a standalone Python 3.12 CLI tool for discovering private K–12 schools, enriching public lead data, and producing lightweight outreach artifacts for manual delivery.
+`lumen-scout` is a Python 3.12 CLI for discovering private K–12 schools, enriching public lead data, and generating outreach artifacts.
 
+Phase 2 updates this repo to use `scout-core` + SQLite as the canonical store. `./data/leads.csv` is now an exported legacy view for compatibility.
 ## Features
 
 - Discover private K–12 schools by city (default: `Downey, CA`)
 - Provider support:
   - SerpAPI (`SERPAPI_API_KEY`) **implemented and recommended default**
   - Brave Search (`BRAVE_SEARCH_API_KEY`) implemented (optional)
-- De-duplicate leads by:
-  - Website domain
-  - Fuzzy school name match
+- Canonical lead storage in SQLite (through lumen-scout's scout-core integration layer)
+- Legacy CSV export compatibility at `./data/leads.csv`
 - Enrich each lead from public pages:
   - Homepage
   - `/contact`
@@ -20,14 +20,26 @@
   - First outreach draft markdown
   - Follow-up draft markdown
   - Custom call brief markdown
-- Manual delivery mode for v1, with a delivery interface that includes a Gmail draft stub for future implementation
-- `--dry-run` for `enrich`, `draft`, and `brief` commands (no API calls, uses placeholders)
+- Manual delivery mode for v1
+- `--dry-run` for `enrich`, `draft`, `followup`, and `brief`
 
 ## Installation
+
+### Windows PowerShell
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ..\scout-core
+pip install -e .
+```
+
+### macOS/Linux
 
 ```bash
 python3.12 -m venv .venv
 source .venv/bin/activate
+pip install -e ../scout-core
 pip install -e .
 ```
 
@@ -45,6 +57,10 @@ export OPENAI_API_KEY="your_openai_api_key"
 
 # Optional: change OpenAI model
 # export OPENAI_MODEL="gpt-4o-mini"
+
+# Optional: override SQLite path used by scout-core integration
+# Default: C:\Users\danie\dev\scout-data\scout.db
+# export SCOUT_DB_PATH="C:\\path\\to\\scout.db"
 ```
 
 ## Commands
@@ -57,7 +73,7 @@ lumen-scout discover --city "Downey, CA" --max 25 --provider serpapi
 lumen-scout discover --city "Downey, CA" --max 25 --provider brave
 ```
 
-Creates `./data/leads.csv` if missing and appends deduped leads.
+Discovers schools, upserts canonical leads, then exports `./data/leads.csv`.
 
 ### 2) Enrich
 
@@ -67,7 +83,7 @@ lumen-scout enrich --input ./data/leads.csv
 lumen-scout enrich --input ./data/leads.csv --dry-run
 ```
 
-Fetches public pages (respecting robots where feasible), extracts email when available, and generates `personalization_hook`.
+Loads leads from canonical storage, enriches them, upserts updates, then re-exports `./data/leads.csv`.
 
 ### 3) Draft initial outreach
 
@@ -77,8 +93,7 @@ lumen-scout draft --input ./data/leads.csv --limit 10 --delivery-mode manual
 lumen-scout draft --input ./data/leads.csv --limit 10 --delivery-mode manual --dry-run
 ```
 
-Outputs markdown files:
-- `./outreach_drafts/<lead_id>_email1.md`
+Outputs markdown files in `./outreach_drafts` and persists `email1_path` to canonical storage.
 
 ### 4) Follow-up drafts
 
@@ -86,8 +101,7 @@ Outputs markdown files:
 lumen-scout followup --input ./data/leads.csv --days 5
 ```
 
-Outputs markdown files:
-- `./outreach_drafts/<lead_id>_followup_day5.md`
+Outputs markdown files in `./outreach_drafts` and persists `followup_path`.
 
 ### 5) Call brief
 
@@ -97,44 +111,36 @@ lumen-scout brief --input ./data/leads.csv --lead-id <uuid>
 lumen-scout brief --input ./data/leads.csv --lead-id <uuid> --dry-run
 ```
 
-Outputs:
-- `./call_briefs/<lead_id>.md`
+Outputs `./call_briefs/<lead_id>.md` and persists `brief_path`.
 
-## Data contract
+## Smoke test
 
-`./data/leads.csv` is the source of truth.
+### Windows PowerShell
 
-Columns:
+```powershell
+# 1) Discover writes canonical DB + exports CSV
+lumen-scout discover --city "Downey, CA" --max 5 --provider serpapi
 
-- `lead_id`
-- `school_name`
-- `city`
-- `website`
-- `domain`
-- `provider`
-- `contact_email`
-- `contact_role`
-- `all_emails`
-- `primary_contact`
-- `linkedin_url`
-- `contact_method`
-- `contact_score`
-- `contact_priority_label`
-- `contact_form_url`
-- `contact_page`
-- `about_page`
-- `personalization_hook`
-- `enriched_at`
-- `email1_path`
-- `followup_path`
-- `brief_path`
-- `notes`
+# 2) Confirm CSV is present/updated
+Get-Item .\data\leads.csv
+Get-Content .\data\leads.csv -TotalCount 5
 
-## Delivery architecture
+# 3) Enrich dry-run still works
+lumen-scout enrich --input .\data\leads.csv --dry-run
 
-- `Delivery` interface
-- `ManualDelivery` writes markdown files
-- `GmailDraftDelivery` exists as a stub (not implemented in v1)
+# 4) Empty DB safety check (optional)
+$env:SCOUT_DB_PATH = "$PWD\tmp\empty.db"
+lumen-scout enrich --input .\data\leads.csv --dry-run
+```
+
+## Data contract compatibility
+
+Legacy CSV columns are preserved:
+
+- `school_name` maps from canonical `name`
+- `city` maps from `extras_json["city"]`
+- Universal fields (`website`, `domain`, `contact_email`, etc.) map from canonical columns
+- School-specific values not represented canonically are retained in `extras_json` and restored during export when available
 
 ## Notes
 

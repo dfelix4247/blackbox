@@ -6,13 +6,18 @@ from typing import Optional
 
 import typer
 
+from .core_store import (
+    ensure_seeded_from_csv,
+    export_legacy_schools_csv,
+    get_all_leads,
+    upsert_school_lead,
+)
 from .delivery import ManualDelivery
 from .enrichment import enrich_lead
 from .llm import LLMService
 from .models import Lead
 from .providers import get_provider
-from .storage import load_leads, save_leads
-from .utils import dedupe_leads
+
 
 app = typer.Typer(help="lumen-scout: discover, enrich, and draft school outreach.")
 
@@ -23,19 +28,21 @@ def discover(
     max: int = typer.Option(25, "--max", min=1),
     provider: str = typer.Option("serpapi", "--provider"),
 ) -> None:
-    """Discover private K-12 schools and append deduped leads to CSV."""
+    """Discover private K-12 schools and upsert leads into scout-core storage."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    existing = load_leads()
+    before_count = len(get_all_leads())
     svc = get_provider(provider)
     found = svc.search(city=city, max_results=max)
-    merged = dedupe_leads(existing, found)
-    save_leads(merged)
+    
     for lead in found:
         typer.echo(
             f"[DISCOVER] accepted lead='{lead.school_name}' query='{lead.source_query}' "
             f"website='{lead.website or 'n/a'}'"
-            )
-    typer.echo(f"Discovered {len(found)} results; saved {len(merged) - len(existing)} new leads to data/leads.csv")
+        )
+
+    csv_path = export_legacy_schools_csv()
+    after_count = len(get_all_leads())
+    typer.echo(f"Discovered {len(found)} results; saved {max(after_count - before_count, 0)} new leads to {csv_path}")    
 
 
 @app.command()
@@ -44,13 +51,18 @@ def enrich(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Enrich leads from website pages and generate personalization hook."""
-    leads = load_leads(input)
+    ensure_seeded_from_csv(input)
+    leads = get_all_leads()
+
     llm = LLMService(dry_run=dry_run)
     updated: list[Lead] = []
     for lead in leads:
-        updated.append(enrich_lead(lead, llm))
-    save_leads(updated, input)
-    typer.echo(f"Enriched {len(updated)} leads -> {input}")
+        enriched = enrich_lead(lead, llm)
+        upsert_school_lead(enriched)
+        updated.append(enriched)
+
+    csv_path = export_legacy_schools_csv(input)
+    typer.echo(f"Enriched {len(updated)} leads -> {csv_path}")
 
 
 @app.command()
@@ -64,7 +76,8 @@ def draft(
     if delivery_mode != "manual":
         raise typer.BadParameter("Only manual delivery-mode is supported in v1")
 
-    leads = load_leads(input)
+    ensure_seeded_from_csv(input)
+    leads = get_all_leads()
     llm = LLMService(dry_run=dry_run)
     delivery = ManualDelivery()
 
@@ -98,10 +111,11 @@ def draft(
             email_output_path = Path("outreach_drafts") / f"{lead.lead_id}_email1.md"
             delivery.deliver(lead, email_content, email_output_path)
             lead.email1_path = str(email_output_path)
-        
+
+        upsert_school_lead(lead)
         count += 1
 
-    save_leads(leads, input)
+    export_legacy_schools_csv(input)
     typer.echo(f"Created {count} outreach drafts in ./outreach_drafts")
     typer.echo("Next steps: review markdown drafts, personalize as needed, and send manually.")
 
@@ -113,7 +127,8 @@ def followup(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Generate follow-up markdown drafts."""
-    leads = load_leads(input)
+    ensure_seeded_from_csv(input)
+    leads = get_all_leads()
     llm = LLMService(dry_run=dry_run)
     delivery = ManualDelivery()
 
@@ -123,9 +138,10 @@ def followup(
         output_path = Path("outreach_drafts") / f"{lead.lead_id}_followup_day{days}.md"
         delivery.deliver(lead, content, output_path)
         lead.followup_path = str(output_path)
+        upsert_school_lead(lead)
         count += 1
 
-    save_leads(leads, input)
+    export_legacy_schools_csv(input)
     typer.echo(f"Created {count} follow-up drafts in ./outreach_drafts")
     typer.echo("Next steps: review follow-up markdown drafts and send manually.")
 
@@ -137,7 +153,8 @@ def brief(
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Generate custom call brief markdown for one lead."""
-    leads = load_leads(input)
+    ensure_seeded_from_csv(input)
+    leads = get_all_leads()
     target: Optional[Lead] = next((lead for lead in leads if lead.lead_id == lead_id), None)
     if not target:
         raise typer.BadParameter(f"Lead id not found: {lead_id}")
@@ -149,7 +166,8 @@ def brief(
     output_path.write_text(content.strip() + "\n", encoding="utf-8")
 
     target.brief_path = str(output_path)
-    save_leads(leads, input)
+    upsert_school_lead(target)
+    export_legacy_schools_csv(input)
     typer.echo(f"Created call brief: {output_path}")
 
 
